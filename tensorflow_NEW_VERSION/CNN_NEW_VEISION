@@ -1,0 +1,85 @@
+# coding:utf-8
+
+import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import cm
+# import os
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+tf.set_random_seed(1)
+np.random.seed(1)
+mnist = input_data.read_data_sets('../MNIST_data', one_hot=True)
+plt.imshow(mnist.train.images[10].reshape((28, 28)), cmap='gray')
+plt.title('%i' % np.argmax(mnist.train.labels[10])); plt.show()
+
+
+
+Batch_size = 25
+LR = 0.001
+
+test_x = mnist.test.images[:2000]
+test_y = mnist.test.labels[:2000]
+with tf.variable_scope('inputs'):
+    xs = tf.placeholder(tf.float32, [None, 28*28])
+    ys = tf.placeholder(tf.float32, [None, 10])
+    x_image = tf.reshape(xs, [-1, 28, 28, 1])
+    keep_prob = tf.placeholder(tf.float32)
+
+with tf.name_scope("CNN"):
+    conv1 = tf.layers.conv2d(
+    inputs=x_image,
+    filters=16,
+    kernel_size=5,
+    strides=1,
+    padding="SAME",
+    activation=tf.nn.relu
+    )                           # 28*28*16
+    max_pooling_one = tf.layers.max_pooling2d(conv1, pool_size=2, strides=2)          # 14*14*16
+    tf.summary.histogram("pool", max_pooling_one)
+    conv2 = tf.layers.conv2d(
+    max_pooling_one,
+    32,
+    5,
+    1,
+    padding="same",
+    activation=tf.nn.relu
+    )                           # 14*14*32
+    max_pooling_two = tf.layers.max_pooling2d(conv2, pool_size=2, strides=2)          # 7*7*32
+    tf.summary.histogram("pool", max_pooling_two)
+flat = tf.reshape(max_pooling_two, shape=[-1, 7*7*32])
+with tf.name_scope("layers"):
+    fun1 = tf.layers.dense(flat, 1024)
+    prediction = tf.layers.dense(fun1, 10)
+    prediction = tf.nn.dropout(prediction, keep_prob=keep_prob)
+with tf.name_scope("loss"):
+    loss = tf.losses.softmax_cross_entropy(onehot_labels=ys, logits=prediction)
+    tf.summary.scalar('loss', loss)
+with tf.name_scope("train"):
+    train_op = tf.train.AdamOptimizer(LR).minimize(loss)
+
+accuracy = tf.metrics.accuracy(labels=tf.argmax(ys, axis=1), predictions=tf.argmax(prediction, axis=1),)[1]
+init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+sess = tf.Session()
+sess.run(init)
+
+# merge_op = tf.summary.merge_all()
+# writer = tf.summary.FileWriter('C:/Users/HinLeung/log', sess.graph)     # write to file
+
+
+for i in range(10000):
+    batch_x, batch_y = mnist.train.next_batch(batch_size=Batch_size)
+    _, loss_ = sess.run([train_op, loss], feed_dict={xs: batch_x, ys: batch_y, keep_prob: 0.5})
+    if i % 25 == 0:
+        # add = sess.run(merge_op, feed_dict={xs: test_x, ys: test_y, keep_prob: 1.0})
+        accuracy_, flat_representation = sess.run([accuracy, flat], feed_dict={xs: test_x, ys: test_y, keep_prob: 1.0})
+        print('Step:', i, '| train loss: %.4f' % loss_, '| test accuracy: %.2f' % accuracy_)
+        # writer.add_summary(add, i)
+
+
+# # print 10 predictions from test data
+# test_output = sess.run(prediction, {xs: test_x[:10]})
+# pred_y = np.argmax(test_output, 1)
+# print(pred_y, 'prediction number')
+# print(np.argmax(test_y[:10], 1), 'real number')
+
