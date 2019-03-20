@@ -1,0 +1,86 @@
+# coding:utf-8
+import tensorflow as tf
+
+from tensorflow.examples.tutorials.mnist import input_data
+
+mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+tf.set_random_seed(1)         # set random seed
+
+training_step = 0.001             # learing rate
+training_Iters = 100000           # max step
+batch_size = 128                  # how many data in once
+frame_size = 28                   # 28 columns in one row
+sequence_length = 28              # 28 rows
+hidden_rnn = 128                  # 128  cells
+n_class = 10                      # 10 classes
+
+
+#  define x y placeholder to  input data
+x = tf.placeholder(tf.float32, [None, sequence_length, frame_size])         # 128 个 28*28
+y = tf.placeholder(tf.float32, [None, n_class])
+
+# define weights and biases
+weights = {
+    # shape (28,128)
+    'in': tf.Variable(tf.random_normal([frame_size, hidden_rnn])),             # （28，128）
+    # shape (128,10)
+    'out': tf.Variable(tf.random_normal([hidden_rnn, n_class]))                # (128, 10)
+}
+biases = {
+    # shape(128, )
+    'in': tf.Variable(tf.constant(0.1, shape=[hidden_rnn, ])),
+    # shape(10, )
+    'out': tf.Variable(tf.constant(0.1, shape=[n_class, ]))
+}
+
+
+def RNN(X, weights, biases):
+    # X(three) shape =>>X(two) for  using tf.matmul(Wx)+b
+    X = tf.reshape(X, [-1, frame_size])                                      # （128*28，28）
+
+    # X_in = Wx+b
+    X_in = tf.matmul(X, weights['in']) + biases['in']
+
+    # X_in shape=>>(128 batches,28 sequence_length,128 cell)
+    X_in = tf.reshape(X_in, [-1, sequence_length, hidden_rnn])               # (128,28,128)
+
+    # using basic LSTM Cell
+    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(hidden_rnn, forget_bias=1.0, state_is_tuple=True)
+    init_state = lstm_cell.zero_state(batch_size, dtype=tf.float32)
+
+    outputs, final_state = tf.nn.dynamic_rnn(lstm_cell, X_in, initial_state=init_state, time_major=False)
+    # outputs, final_state = tf.nn.dynamic_rnn(lstm_cell, X_in, initial_state=init_state, time_major=False)
+    result = tf.matmul(final_state[1], weights['out']) + biases['out']
+
+    return result
+
+
+prediction = RNN(x, weights, biases)
+# using softmax() redece_mean this loss
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
+
+
+# cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(prediction, y))
+# using Aaamoptimizer(0.001) min(loss) to train
+train_op = tf.train.AdamOptimizer(training_step).minimize(cost)
+
+# Calculate between prediction and the real data percentage
+correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
+accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    step = 0
+    while step * batch_size < training_Iters:
+        batch_xs, batch_ys = mnist.train.next_batch(batch_size)
+        batch_xs = batch_xs.reshape([batch_size, sequence_length, frame_size])
+        sess.run([train_op], feed_dict={
+            x: batch_xs,
+            y: batch_ys
+        })
+        if step % 50 == 0:
+            print(sess.run(accuracy, feed_dict={x: batch_xs, y: batch_ys}))
+        step += 1
+
+
+
